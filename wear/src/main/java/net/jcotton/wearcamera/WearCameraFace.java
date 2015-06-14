@@ -21,11 +21,13 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Resources;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -36,8 +38,13 @@ import android.view.SurfaceHolder;
 import android.view.WindowInsets;
 
 import com.google.android.gms.wearable.DataApi;
+import com.google.android.gms.wearable.DataEvent;
 import com.google.android.gms.wearable.DataEventBuffer;
+import com.google.android.gms.wearable.DataMap;
+import com.google.android.gms.wearable.DataMapItem;
+import com.google.android.gms.wearable.WearableListenerService;
 
+import java.io.IOException;
 import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 
@@ -45,7 +52,7 @@ import java.util.concurrent.TimeUnit;
  * Digital watch face with seconds. In ambient mode, the seconds aren't displayed. On devices with
  * low-bit ambient mode, the text is drawn without anti-aliasing in ambient mode.
  */
-public class WearCameraFace extends CanvasWatchFaceService implements DataApi.DataListener {
+public class WearCameraFace extends CanvasWatchFaceService {
     private static final Typeface NORMAL_TYPEFACE =
             Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL);
 
@@ -58,11 +65,6 @@ public class WearCameraFace extends CanvasWatchFaceService implements DataApi.Da
     @Override
     public Engine onCreateEngine() {
         return new Engine();
-    }
-
-    @Override
-    public void onDataChanged(DataEventBuffer dataEventBuffer) {
-
     }
 
     private class Engine extends CanvasWatchFaceService.Engine {
@@ -258,6 +260,29 @@ public class WearCameraFace extends CanvasWatchFaceService implements DataApi.Da
          */
         private boolean shouldTimerBeRunning() {
             return isVisible() && !isInAmbientMode();
+        }
+    }
+
+    // shamelessly taken from http://stackoverflow.com/q/26845503 as I was ripping my hair out over this
+    public class ListenerService extends WearableListenerService {
+        @Override
+        public void onDataChanged(DataEventBuffer dataEvents) {
+            super.onDataChanged(dataEvents);
+            for(DataEvent event : dataEvents) {
+                final Uri uri = event.getDataItem().getUri();
+                final String path = uri != null ? uri.getPath() : null;
+                if("/color".equals(path)) {
+                    final DataMap map = DataMapItem.fromDataItem(event.getDataItem()).getDataMap();
+                    int color = map.getInt("color");
+                    Bitmap bmp = Bitmap.createBitmap(getWallpaperDesiredMinimumWidth(), getWallpaperDesiredMinimumHeight(), Bitmap.Config.ARGB_8888);
+                    bmp.eraseColor(color);
+                    try {
+                        WearCameraFace.this.setWallpaper(bmp);
+                    } catch(IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
         }
     }
 }
