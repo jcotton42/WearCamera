@@ -5,20 +5,28 @@ import android.content.DialogInterface;
 import android.content.DialogInterface.OnCancelListener;
 import android.content.Intent;
 import android.content.IntentSender.SendIntentException;
+import android.graphics.Bitmap;
+import android.net.Uri;
 import android.os.Bundle;
+import android.provider.MediaStore;
+import android.support.annotation.NonNull;
 import android.util.Log;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GooglePlayServicesUtil;
 import com.google.android.gms.common.api.GoogleApiClient;
-import com.google.android.gms.wearable.CapabilityApi;
+import com.google.android.gms.wearable.DataApi;
+import com.google.android.gms.wearable.DataMap;
+import com.google.android.gms.wearable.PutDataMapRequest;
 import com.google.android.gms.wearable.Wearable;
+
+import java.io.IOException;
 
 
 public class MainActivity extends Activity implements
                                            GoogleApiClient.ConnectionCallbacks,
                                            GoogleApiClient.OnConnectionFailedListener {
-
+    private static final int TAKE_PICTURE = 100;
     private static final String TAG = "MainActivity";
 
     private static final String KEY_IN_RESOLUTION = "is_in_resolution";
@@ -38,8 +46,6 @@ public class MainActivity extends Activity implements
      * waiting for resolution intent to return.
      */
     private boolean isInResolution;
-
-    private static String CAMERA_CAPABILITY = "camera";
 
     /**
      * Called when the activity is starting. Restores the activity state.
@@ -88,7 +94,7 @@ public class MainActivity extends Activity implements
      * Saves the resolution state.
      */
     @Override
-    protected void onSaveInstanceState(Bundle outState) {
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putBoolean(KEY_IN_RESOLUTION, isInResolution);
     }
@@ -103,6 +109,26 @@ public class MainActivity extends Activity implements
             case REQUEST_CODE_RESOLUTION:
                 retryConnecting();
                 break;
+            case TAKE_PICTURE:
+                if(resultCode == RESULT_OK) {
+                    final Uri uri = data.getData();
+                    getContentResolver().notifyChange(uri, null);
+                    try {
+                        final Bitmap bmp = MediaStore.Images.Media.getBitmap(getContentResolver(), uri);
+                        int p = 0;
+                        final int s = bmp.getWidth() * bmp.getHeight();
+                        for(int x = 0; x < bmp.getWidth(); x++)
+                            for(int y = 0; y < bmp.getHeight(); y++)
+                                p += bmp.getPixel(x, y);
+                        p /= s;
+                        final PutDataMapRequest putDataMapRequest = PutDataMapRequest.create("/color");
+                        final DataMap map = putDataMapRequest.getDataMap();
+                        map.putInt("color", p);
+                        Wearable.DataApi.putDataItem(googleApiClient, putDataMapRequest.asPutDataRequest());
+                    } catch(IOException e) {
+                        e.printStackTrace();
+                    }
+                }
         }
     }
 
@@ -119,7 +145,12 @@ public class MainActivity extends Activity implements
     @Override
     public void onConnected(Bundle connectionHint) {
         Log.i(TAG, "GoogleApiClient connected");
-        // TODO: Start making API requests.
+        takePhoto();
+    }
+
+    private void takePhoto() {
+        Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        startActivityForResult(intent, TAKE_PICTURE);
     }
 
     /**
@@ -163,12 +194,5 @@ public class MainActivity extends Activity implements
             Log.e(TAG, "Exception while starting resolution activity", e);
             retryConnecting();
         }
-    }
-
-    private void setupCamera() {
-        CapabilityApi.GetCapabilityResult result =
-                Wearable.CapabilityApi.getCapability(
-                        googleApiClient, CAMERA_CAPABILITY,
-                        CapabilityApi.FILTER_REACHABLE).await();
     }
 }
